@@ -17,7 +17,10 @@ include_directories(BEFORE
 	${CMAKE_CURRENT_SOURCE_DIR}/../libcxx/src
 )
 
-add_definitions(-D__DARWIN_NON_CANCELABLE=1 -D_LIBCPP_HAS_NO_LIBRARY_ALIGNED_ALLOCATION=1
+# OSXER (aligned allocation): the C++17 aligned operator new/delete were compiled out, although
+# lib/new-delete.exp exports them and macOS 10.13+ has them; C++ libraries built for current
+# macOS (conda-forge's libc++ re-exports this libc++abi) failed to load without them.
+add_definitions(-D__DARWIN_NON_CANCELABLE=1
 	# DARLING: libcxxabi 13 source needs symbols that libcxx 15 removed/gated:
 	# - _LIBCPP_SAFE_STATIC was a require_constant_initialization attribute;
 	#   gone in libcxx 15. Empty define is safe (semantic is best-effort).
@@ -56,7 +59,12 @@ set(DYLIB_INSTALL_NAME "/usr/lib/libc++abi.dylib")
 set(DYLIB_COMPAT_VERSION "1.0.0")
 set(DYLIB_CURRENT_VERSION "1.0.0")
 
-add_darling_static_library(cxxabi_static SOURCES $<TARGET_OBJECTS:cxxabi_obj>)
+# OSXER (aligned allocation): the static copy links into dyld, which has no posix_memalign;
+# it keeps the aligned operators compiled out. The dylib below gets them.
+add_darling_object_library(cxxabi_obj_static ${cxxabi_sources})
+target_compile_definitions(cxxabi_obj_static PRIVATE _LIBCPP_HAS_NO_LIBRARY_ALIGNED_ALLOCATION=1)
+make_fat(cxxabi_obj_static)
+add_darling_static_library(cxxabi_static SOURCES $<TARGET_OBJECTS:cxxabi_obj_static>)
 make_fat(cxxabi_static)
 
 add_darling_library(cxxabi SHARED $<TARGET_OBJECTS:cxxabi_obj>)
